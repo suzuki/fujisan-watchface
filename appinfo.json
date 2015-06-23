@@ -13,6 +13,18 @@
     "dummy": 0
   },
   "resources": {
-    "media": []
+    "media": [
+      {
+        "type": "font",
+        "name": "FONT_BEAVER_30",
+        "file": "fonts/beaver.ttf",
+        "compatibility": "2.7"
+      },
+      {
+        "type": "png",
+        "name": "WALL_COLOR_IMAGE",
+        "file": "images/wall-color.png"
+      }
+    ]
   }
 }
