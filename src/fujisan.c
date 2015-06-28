@@ -4,12 +4,14 @@ static Window *window;
 static TextLayer *s_watch_layer;
 static Layer *s_circle_window_layer;
 static Layer *s_fuji_layer;
+static Layer *s_fuji_background_layer;
 static BitmapLayer *s_wall_bitmap_layer;
 static GFont s_beaver_font;
 
 static GBitmap *s_wall_bitmap;
 static GPath *s_fuji_path_ptr = NULL;
 static GPath *s_fuji_snow_path_ptr = NULL;
+static GPath *s_fuji_background_path_ptr = NULL;
 static const GPathInfo FUJI_PATH_INFO = {
   .num_points = 4,
   .points = (GPoint []) {
@@ -33,6 +35,11 @@ static const GPathInfo FUJI_SNOW_PATH_INFO = {
     { 57, 65}
   }
 };
+static const GPathInfo FUJI_BACKGROUND_PATH_INFO = {
+  .num_points = 4,
+  .points = (GPoint[]) {{2, 2}, {142, 2}, {142, 166}, {2, 166}}
+};
+
 
 static void update_time() {
   time_t tmp = time(NULL);
@@ -59,20 +66,39 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 static void setup_paths(void) {
   s_fuji_path_ptr = gpath_create(&FUJI_PATH_INFO);
   s_fuji_snow_path_ptr = gpath_create(&FUJI_SNOW_PATH_INFO);
+  s_fuji_background_path_ptr = gpath_create(&FUJI_BACKGROUND_PATH_INFO);
 }
 
 static void setup_bitmaps(void) {
   s_wall_bitmap = gbitmap_create_with_resource(RESOURCE_ID_WALL_COLOR_IMAGE);
 }
 
+static void fuji_background_layer_update_proc(Layer *layer, GContext *ctx) {
+  // GColorSunsetOrange
+  time_t tmp = time(NULL);
+  struct tm *tick_time = localtime(&tmp);
+
+  int hour = (int) tick_time->tm_hour;
+
+  if (0 <= hour && hour <= 5) {
+    graphics_context_set_fill_color(ctx, GColorDarkGray);
+  } else if (17 <= hour && hour <= 18) {
+    graphics_context_set_fill_color(ctx, GColorSunsetOrange);
+  } else if (19 <= hour && hour <= 24) {
+    graphics_context_set_fill_color(ctx, GColorDarkGray);
+  } else {
+    graphics_context_set_fill_color(ctx, GColorWhite);
+  }
+
+  gpath_draw_filled(ctx, s_fuji_background_path_ptr);
+}
+
 static void fuji_layer_update_proc(Layer *layer, GContext *ctx) {
   //GRect bounds = layer_get_bounds(layer);
-
-#ifdef PBL_PLATFORM_BASALT
   graphics_context_set_stroke_width(ctx, 3);
-#endif
 
-  graphics_context_set_fill_color(ctx, COLOR_FALLBACK(GColorPictonBlue, GColorBlack));
+  graphics_context_set_stroke_color(ctx, GColorBlack);
+  graphics_context_set_fill_color(ctx, GColorPictonBlue);
   gpath_draw_filled(ctx, s_fuji_path_ptr);
 
   graphics_context_set_fill_color(ctx, GColorWhite);
@@ -87,10 +113,7 @@ static void circle_window_layer_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   GPoint circle_center = GPoint((bounds.size.w / 2), (bounds.size.w / 2)); // same value
 
-#ifdef PBL_PLATFORM_BASALT
   graphics_context_set_stroke_width(ctx, 13);
-#endif
-
   graphics_context_set_stroke_color(ctx, COLOR_FALLBACK(GColorDarkGreen, GColorBlack));
   graphics_draw_circle(ctx, circle_center, 54);
 }
@@ -100,6 +123,9 @@ static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
 
+  s_fuji_background_layer = layer_create(bounds);
+  layer_set_update_proc(s_fuji_background_layer, fuji_background_layer_update_proc);
+  layer_add_child(window_layer, s_fuji_background_layer);
 
   s_fuji_layer = layer_create(bounds);
   layer_set_update_proc(s_fuji_layer, fuji_layer_update_proc);
@@ -107,11 +133,7 @@ static void window_load(Window *window) {
 
   s_wall_bitmap_layer = bitmap_layer_create(bounds);
   bitmap_layer_set_bitmap(s_wall_bitmap_layer, s_wall_bitmap);
-#ifdef PBL_PLATFORM_APLITE
-  bitmap_layer_set_compositing_mode(s_wall_bitmap_layer, GCompOpAssign);
-#elif PBL_PLATFORM_BASALT
   bitmap_layer_set_compositing_mode(s_wall_bitmap_layer, GCompOpSet);
-#endif
   layer_add_child(window_layer,  bitmap_layer_get_layer(s_wall_bitmap_layer));
 
   s_circle_window_layer = layer_create(bounds);
@@ -119,12 +141,11 @@ static void window_load(Window *window) {
   layer_add_child(window_layer, s_circle_window_layer);
 
   s_watch_layer = text_layer_create((GRect) { .origin = { 0, 130 }, .size = { bounds.size.w, 30 } });
+  s_beaver_font = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_BEAVER_30));
+  text_layer_set_font(s_watch_layer, s_beaver_font);
   text_layer_set_text(s_watch_layer, "00:00");
   text_layer_set_text_alignment(s_watch_layer, GTextAlignmentCenter);
   text_layer_set_background_color(s_watch_layer, GColorClear);
-
-  s_beaver_font = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_BEAVER_30));
-  text_layer_set_font(s_watch_layer, s_beaver_font);
 
   layer_add_child(window_layer, text_layer_get_layer(s_watch_layer));
 
@@ -134,6 +155,7 @@ static void window_load(Window *window) {
 static void window_unload(Window *window) {
   gpath_destroy(s_fuji_path_ptr);
   gpath_destroy(s_fuji_snow_path_ptr);
+  gpath_destroy(s_fuji_background_path_ptr);
   gbitmap_destroy(s_wall_bitmap);
 
   fonts_unload_custom_font(s_beaver_font);
@@ -141,6 +163,7 @@ static void window_unload(Window *window) {
 
   layer_destroy(s_circle_window_layer);
   layer_destroy(s_fuji_layer);
+  layer_destroy(s_fuji_background_layer);
   bitmap_layer_destroy(s_wall_bitmap_layer);
 }
 

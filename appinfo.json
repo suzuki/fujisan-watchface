@@ -5,7 +5,7 @@
   "companyName": "0610.org",
   "versionLabel": "1.0",
   "sdkVersion": "3",
-  "targetPlatforms": ["aplite", "basalt"],
+  "targetPlatforms": ["basalt"],
   "watchapp": {
     "watchface": true
   },
@@ -24,6 +24,12 @@
         "type": "png",
         "name": "WALL_COLOR_IMAGE",
         "file": "images/wall-color.png"
+      },
+      {
+        "menuIcon": true,
+        "type": "png",
+        "name": "IMAGE_MENU_ICON",
+        "file": "images/menu-icon.png"
       }
     ]
   }
