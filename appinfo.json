@@ -10,8 +10,12 @@
     "watchface": true
   },
   "appKeys": {
-    "dummy": 0
+    "KEY_SUNRISE_TIME": 0,
+    "KEY_SUNSET_TIME": 1
   },
+  "capabillities": [
+    "location"
+  ],
   "resources": {
     "media": [
       {

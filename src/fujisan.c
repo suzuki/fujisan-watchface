@@ -1,4 +1,6 @@
 #include <pebble.h>
+#define KEY_SUNRISE_TIME 0
+#define KEY_SUNSET_TIME 1
 
 static Window *window;
 static TextLayer *s_watch_layer;
@@ -12,6 +14,9 @@ static GBitmap *s_wall_bitmap;
 static GPath *s_fuji_path_ptr = NULL;
 static GPath *s_fuji_snow_path_ptr = NULL;
 static GPath *s_fuji_background_path_ptr = NULL;
+static long s_sunrise = 0;
+static long s_sunset = 0;
+
 static const GPathInfo FUJI_PATH_INFO = {
   .num_points = 4,
   .points = (GPoint []) {
@@ -74,27 +79,44 @@ static void setup_bitmaps(void) {
 }
 
 static void fuji_background_layer_update_proc(Layer *layer, GContext *ctx) {
-  // GColorSunsetOrange
-  time_t tmp = time(NULL);
-  struct tm *tick_time = localtime(&tmp);
+  time_t current_time = time(NULL);
+  struct tm *day_start = localtime(&current_time);
+  struct tm *day_end = localtime(&current_time);
 
-  int hour = (int) tick_time->tm_hour;
+  day_start->tm_hour = 0;
+  day_start->tm_min = 0;
+  day_start->tm_sec = 0;
+  long day_start_time = mktime(day_start);
 
-  if (0 <= hour && hour <= 5) {
-    graphics_context_set_fill_color(ctx, GColorDarkGray);
-  } else if (17 <= hour && hour <= 18) {
-    graphics_context_set_fill_color(ctx, GColorSunsetOrange);
-  } else if (19 <= hour && hour <= 24) {
-    graphics_context_set_fill_color(ctx, GColorDarkGray);
-  } else {
-    graphics_context_set_fill_color(ctx, GColorWhite);
+  day_end->tm_hour = 23;
+  day_end->tm_min = 59;
+  day_end->tm_sec = 59;
+  long day_end_time = mktime(day_end);
+
+  GColor fill_color = GColorWhite;
+
+  if (s_sunrise != 0) {
+    if (day_start_time <= current_time && current_time < (s_sunrise - 3600)) {
+      fill_color = GColorDarkGray;
+    }
+    if ((s_sunrise - 3600) <= current_time && current_time <= s_sunrise) {
+      fill_color = GColorPastelYellow;
+    }
+  }
+  if (s_sunset != 0) {
+    if (s_sunset <= current_time && current_time <= (s_sunset + 3600)) {
+      fill_color = GColorSunsetOrange;
+    }
+    if ((s_sunset + 3600) < current_time && current_time <= day_end_time) {
+      fill_color = GColorDarkGray;
+    }
   }
 
+  graphics_context_set_fill_color(ctx, fill_color);
   gpath_draw_filled(ctx, s_fuji_background_path_ptr);
 }
 
 static void fuji_layer_update_proc(Layer *layer, GContext *ctx) {
-  //GRect bounds = layer_get_bounds(layer);
   graphics_context_set_stroke_width(ctx, 3);
 
   graphics_context_set_stroke_color(ctx, GColorBlack);
@@ -167,6 +189,40 @@ static void window_unload(Window *window) {
   bitmap_layer_destroy(s_wall_bitmap_layer);
 }
 
+static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
+  Tuple *t = dict_read_first(iterator);
+
+  while (t != NULL) {
+    switch (t->key) {
+    case KEY_SUNRISE_TIME:
+      s_sunrise = (long) t->value->int32;
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "Sunrise at %ld", s_sunrise);
+      break;
+    case KEY_SUNSET_TIME:
+      s_sunset = (long) t->value->int32;
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "Sunset at %ld", s_sunset);
+      break;
+    default:
+      APP_LOG(APP_LOG_LEVEL_ERROR, "Key %d not recognized!", (int)t->key);
+      break;
+    }
+
+    t = dict_read_next(iterator);
+  }
+}
+
+static void inbox_dropped_callback(AppMessageResult reason, void *context) {
+  APP_LOG(APP_LOG_LEVEL_ERROR, "Message dropped!");
+}
+
+static void outbox_failed_callback(DictionaryIterator *iterator, AppMessageResult reason, void *context) {
+  APP_LOG(APP_LOG_LEVEL_ERROR, "Outbox send failed!");
+}
+
+static void outbox_sent_callback(DictionaryIterator *iterator, void *context) {
+  APP_LOG(APP_LOG_LEVEL_INFO, "Outbox send success!");
+}
+
 static void init(void) {
   setup_paths();
   setup_bitmaps();
@@ -180,6 +236,15 @@ static void init(void) {
   window_stack_push(window, animated);
 
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+
+  // AppMessage Callbacks
+  app_message_register_inbox_received(inbox_received_callback);
+  app_message_register_inbox_dropped(inbox_dropped_callback);
+  app_message_register_outbox_failed(outbox_failed_callback);
+  app_message_register_outbox_sent(outbox_sent_callback);
+
+  // Open AppMessage
+  app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
 }
 
 static void deinit(void) {
@@ -189,7 +254,7 @@ static void deinit(void) {
 int main(void) {
   init();
 
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", window);
+  //APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", window);
 
   app_event_loop();
   deinit();
