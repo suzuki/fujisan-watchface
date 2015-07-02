@@ -7,7 +7,11 @@ Watchface app for Pebble Time.
 
 ## Screenshot
 
+### Normal face
+
 ![Normal face](screenshot/normal.png)
+
+### Sunrise / Sunset face
 
 ![Sunrise face](screenshot/sunrise.png)
 
