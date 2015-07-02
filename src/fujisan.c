@@ -9,13 +9,12 @@ static Layer *s_fuji_layer;
 static Layer *s_fuji_background_layer;
 static BitmapLayer *s_wall_bitmap_layer;
 static GFont s_beaver_font;
-
 static GBitmap *s_wall_bitmap;
 static GPath *s_fuji_path_ptr = NULL;
 static GPath *s_fuji_snow_path_ptr = NULL;
 static GPath *s_fuji_background_path_ptr = NULL;
-static long s_sunrise = 0;
-static long s_sunset = 0;
+static time_t s_sunrise = 0;
+static time_t s_sunset = 0;
 
 static const GPathInfo FUJI_PATH_INFO = {
   .num_points = 4,
@@ -66,6 +65,15 @@ static void update_time() {
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time();
+
+  if (tick_time->tm_min == 58) {
+    DictionaryIterator *iter;
+    app_message_outbox_begin(&iter);
+
+    dict_write_uint8(iter, 0, 0);
+
+    app_message_outbox_send();
+  }
 }
 
 static void setup_paths(void) {
@@ -80,34 +88,41 @@ static void setup_bitmaps(void) {
 
 static void fuji_background_layer_update_proc(Layer *layer, GContext *ctx) {
   time_t current_time = time(NULL);
-  struct tm *day_start = localtime(&current_time);
-  struct tm *day_end = localtime(&current_time);
+  time_t start_time = time(NULL);
+  time_t end_time = time(NULL);
+  struct tm *current = localtime(&current_time);
+  struct tm *day_start = localtime(&start_time);
+  struct tm *day_end = localtime(&end_time);
 
   day_start->tm_hour = 0;
   day_start->tm_min = 0;
   day_start->tm_sec = 0;
-  long day_start_time = mktime(day_start);
+  time_t day_start_time = mktime(day_start);
 
-  day_end->tm_hour = 23;
-  day_end->tm_min = 59;
-  day_end->tm_sec = 59;
-  long day_end_time = mktime(day_end);
+  day_end->tm_mday = day_end->tm_mday + 1;
+  time_t day_end_time = mktime(day_end);
+
+  // for screenshot
+  //current_time = 1435744800;
+
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "current_time %ld", current_time);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "day_start_time %ld", day_start_time);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "day_end_time %ld", day_end_time);
 
   GColor fill_color = GColorWhite;
-
   if (s_sunrise != 0) {
-    if (day_start_time <= current_time && current_time < (s_sunrise - 3600)) {
+    if (day_start_time <= current_time && current_time < (s_sunrise - 1800)) {
       fill_color = GColorDarkGray;
     }
-    if ((s_sunrise - 3600) <= current_time && current_time <= s_sunrise) {
+    if ((s_sunrise - 1800) <= current_time && current_time <= (s_sunrise + 1800)) {
       fill_color = GColorPastelYellow;
     }
   }
   if (s_sunset != 0) {
-    if (s_sunset <= current_time && current_time <= (s_sunset + 3600)) {
+    if ((s_sunset - 1800) <= current_time && current_time <= (s_sunset + 1800)) {
       fill_color = GColorSunsetOrange;
     }
-    if ((s_sunset + 3600) < current_time && current_time <= day_end_time) {
+    if ((s_sunset + 1800) < current_time && current_time <= day_end_time) {
       fill_color = GColorDarkGray;
     }
   }
@@ -165,10 +180,8 @@ static void window_load(Window *window) {
   s_watch_layer = text_layer_create((GRect) { .origin = { 0, 130 }, .size = { bounds.size.w, 30 } });
   s_beaver_font = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_BEAVER_30));
   text_layer_set_font(s_watch_layer, s_beaver_font);
-  text_layer_set_text(s_watch_layer, "00:00");
   text_layer_set_text_alignment(s_watch_layer, GTextAlignmentCenter);
   text_layer_set_background_color(s_watch_layer, GColorClear);
-
   layer_add_child(window_layer, text_layer_get_layer(s_watch_layer));
 
   update_time();
@@ -209,6 +222,8 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
 
     t = dict_read_next(iterator);
   }
+
+  layer_mark_dirty(s_fuji_background_layer);
 }
 
 static void inbox_dropped_callback(AppMessageResult reason, void *context) {
@@ -253,9 +268,6 @@ static void deinit(void) {
 
 int main(void) {
   init();
-
-  //APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", window);
-
   app_event_loop();
   deinit();
 }
